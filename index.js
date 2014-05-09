@@ -1,11 +1,18 @@
 "use strict";
+
 var through = require('through2').obj;
 var path = require("path");
 var istanbul = require("istanbul");
+var gutil = require('gulp-util');
+var _ = require('lodash');
 var hook = istanbul.hook;
 var Report = istanbul.Report;
 var Collector = istanbul.Collector;
 var instrumenter = new istanbul.Instrumenter();
+var PluginError = gutil.PluginError;
+
+var PLUGIN_NAME = 'gulp-istanbul';
+
 
 var plugin  = module.exports = function () {
   var fileMap = {};
@@ -46,23 +53,25 @@ plugin.writeReports = function (opts) {
   if (!opts.reportOpts) {
     opts.reportOpts = { dir: opts.dir };
   }
+  var validReports = Report.getReportList();
+
+  var invalid = _.difference(opts.reporters, validReports);
+  if (invalid.length) {
+    // throw before we start -- fail fast
+    throw new PluginError(PLUGIN_NAME, 'Invalid reporters: '+invalid.join(', '));
+  }
+
+  opts.reporters = opts.reporters.map(function (r) {
+    return Report.create(r, opts.reportOpts);
+  });
 
   var cover = through();
 
   cover.on('end', function() {
-
     var collector = new Collector();
-
     collector.add(global.__coverage__);
-
-
-    opts.reporters.forEach(function (type) { 
-      var report = Report.create(type, opts.reportOpts)
-      report.writeReport(collector, true); 
-    });
-
+    opts.reporters.forEach(function (report) { report.writeReport(collector, true); });
   }).resume();
 
   return cover;
-
 };

@@ -141,36 +141,15 @@ describe('gulp-istanbul', function () {
         });
     });
 
-    xit('rejects unsupported report formats with an error', function (done) {
-      //process.stdout.write = function () {};
+    it('throws when specifying invalid reporters', function (done) {
+      var actualErr;
       try {
-        gulp.on('error', function (err) {
-          assert.ok(err);
-          done();
-        });
-        gulp.src([ 'test/fixtures/test/*.js' ])
-          .pipe(mocha({ reporter: 'spec' }))
-          .pipe(
-            istanbul
-              .writeReports({dir: 'cov-foo', reporters: ['fake-format']})
-              .on('error', function (err) {
-                assert.ok(err);
-                done();
-              })
-          )
-          .on('end', function () {
-            //process.stdout.write = out;
-            assert.fail('an error should have been thrown for invalid report format');
-            done();
-          })
-          .on('error', function (err) {
-            assert.ok(err);
-            done();
-          });
+        istanbul.writeReports({reporters:['not-a-valid-reporter']});
       } catch (err) {
-        assert.ok('err');
-        done();
+        actualErr = err;
       }
+      assert.ok(actualErr.plugin === 'gulp-istanbul');
+      done();
     });
 
   });
