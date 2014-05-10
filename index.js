@@ -65,7 +65,7 @@ plugin.writeReports = function (opts) {
   var invalid = _.difference(opts.reporters, validReports);
   if (invalid.length) {
     // throw before we start -- fail fast
-    throw new PluginError(PLUGIN_NAME, 'Invalid reporters: '+invalid.join(', '));
+    throw new PluginError(PLUGIN_NAME, 'Invalid reporters: ' + invalid.join(', '));
   }
 
   var reporters = opts.reporters.map(function (r) {
@@ -74,7 +74,7 @@ plugin.writeReports = function (opts) {
 
   var cover = through();
 
-  cover.on('end', function() {
+  cover.on('end', function () {
     var collector = new Collector();
     collector.add(global[opts.coverageVariable]);
     reporters.forEach(function (report) { report.writeReport(collector, true); });
