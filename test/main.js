@@ -1,4 +1,3 @@
-/*global describe, it*/
 'use strict';
 
 var fs = require('fs');
@@ -12,6 +11,10 @@ var mocha = require('gulp-mocha');
 var out = process.stdout.write.bind(process.stdout);
 
 describe('gulp-istanbul', function () {
+
+  afterEach(function () {
+    process.stdout.write = out; // put it back even if test fails
+  });
 
   var libFile = new gutil.File({
     path: 'test/fixtures/lib/add.js',
@@ -29,7 +32,7 @@ describe('gulp-istanbul', function () {
       this.stream.on('data', function (file) {
         assert.equal(file.path, libFile.path);
         assert.ok(file.contents.toString().indexOf('__cov_') >= 0);
-        assert.ok(file.contents.toString().indexOf('__coverage__') >= 0);
+        assert.ok(file.contents.toString().indexOf('$$cov_') >= 0);
         done();
       });
 
@@ -53,6 +56,33 @@ describe('gulp-istanbul', function () {
       this.stream.write(srcFile);
       this.stream.end();
     });
+  });
+
+  describe('istanbul.summarizeCoverage()', function () {
+    beforeEach(function (done) {
+
+      istanbul = require('../');
+
+      // set up coverage
+      gulp.src([ 'test/fixtures/lib/*.js' ])
+        .pipe(istanbul())
+        .on('finish', function () {
+          process.stdout.write = function () {};
+          gulp.src([ 'test/fixtures/test/*.js' ])
+            .pipe(mocha({ reporter: 'spec' }))
+            .on('finish', done);
+        });
+    });
+
+    it('gets statistics about the test run', function (done) {
+      var data = istanbul.summarizeCoverage();
+      assert.ok(data.lines.pct === 50);
+      assert.ok(data.statements.pct === 50);
+      assert.ok(data.functions.pct === 0);
+      assert.ok(data.branches.pct === 100);
+      done();
+    });
+
   });
 
   describe('istanbul.writeReports()', function () {
@@ -79,10 +109,9 @@ describe('gulp-istanbul', function () {
       process.stdout.write = function (str) {
 
         if (str.indexOf('==== Coverage summary ====') >= 0) {
-          process.stdout.write = out;
           done();
         }
-      }
+      };
     });
 
     it('create coverage report', function (done) {
@@ -94,7 +123,6 @@ describe('gulp-istanbul', function () {
           assert.ok(fs.existsSync('./coverage'));
           assert.ok(fs.existsSync('./coverage/lcov.info'));
           assert.ok(fs.existsSync('./coverage/coverage-final.json'));
-          process.stdout.write = out;
           done();
         });
     });
@@ -108,7 +136,6 @@ describe('gulp-istanbul', function () {
           assert.ok(fs.existsSync('./cov-foo'));
           assert.ok(fs.existsSync('./cov-foo/lcov.info'));
           assert.ok(fs.existsSync('./cov-foo/coverage-final.json'));
-          process.stdout.write = out;
           done();
         });
     });
@@ -141,37 +168,47 @@ describe('gulp-istanbul', function () {
         });
     });
 
-    xit('rejects unsupported report formats with an error', function (done) {
-      //process.stdout.write = function () {};
+    it('throws when specifying invalid reporters', function (done) {
+      var actualErr;
       try {
-        gulp.on('error', function (err) {
-          assert.ok(err);
-          done();
-        });
-        gulp.src([ 'test/fixtures/test/*.js' ])
-          .pipe(mocha({ reporter: 'spec' }))
-          .pipe(
-            istanbul
-              .writeReports({dir: 'cov-foo', reporters: ['fake-format']})
-              .on('error', function (err) {
-                assert.ok(err);
-                done();
-              })
-          )
-          .on('end', function () {
-            //process.stdout.write = out;
-            assert.fail('an error should have been thrown for invalid report format');
-            done();
-          })
-          .on('error', function (err) {
-            assert.ok(err);
-            done();
-          });
+        istanbul.writeReports({reporters:['not-a-valid-reporter']});
       } catch (err) {
-        assert.ok('err');
-        done();
+        actualErr = err;
       }
+      assert.ok(actualErr.plugin === 'gulp-istanbul');
+      done();
     });
 
+  });
+
+  describe('with defined coverageVariable option', function () {
+    beforeEach(function () {
+      istanbul = require('../');
+    });
+
+    afterEach(function () {
+      rimraf.sync('coverage');
+    });
+
+    it('allow specifying coverage variable', function (done) {
+      process.stdout.write = function () {};
+
+      var coverageVariable = 'CUSTOM_COVERAGE_VARIABLE';
+
+      // set up coverage
+      gulp.src([ 'test/fixtures/lib/*.js' ])
+        .pipe(istanbul({ coverageVariable: coverageVariable }))
+        .on('finish', function () {
+          gulp.src([ 'test/fixtures/test/*.js' ])
+            .pipe(mocha({ reporter: 'spec' }))
+            .pipe(istanbul.writeReports({ coverageVariable: coverageVariable }))
+            .on('end', function () {
+              assert.ok(fs.existsSync('./coverage'));
+              assert.ok(fs.existsSync('./coverage/lcov.info'));
+              assert.ok(fs.existsSync('./coverage/coverage-final.json'));
+              done();
+            });
+        });
+    });
   });
 });
