@@ -1,4 +1,5 @@
 "use strict";
+var COVERAGE_VARIABLE = '$$cov_' + new Date().getTime() + '$$';
 
 var through = require('through2').obj;
 var path = require("path");
@@ -8,13 +9,14 @@ var _ = require('lodash');
 var hook = istanbul.hook;
 var Report = istanbul.Report;
 var Collector = istanbul.Collector;
-var instrumenter = new istanbul.Instrumenter();
 var PluginError = gutil.PluginError;
 
 var PLUGIN_NAME = 'gulp-istanbul';
 
 
-var plugin  = module.exports = function () {
+var plugin  = module.exports = function (opts) {
+  if (!opts) opts = {};
+  if (!opts.coverageVariable) opts.coverageVariable = COVERAGE_VARIABLE;
   var fileMap = {};
 
   hook.hookRequire(function (path) {
@@ -22,6 +24,8 @@ var plugin  = module.exports = function () {
   }, function (code, path) {
     return fileMap[path];
   });
+
+  var instrumenter = new istanbul.Instrumenter({ coverageVariable: opts.coverageVariable });
 
   return through(function (file, enc, cb) {
     if (!file.contents instanceof Buffer) {
@@ -38,15 +42,22 @@ var plugin  = module.exports = function () {
   });
 };
 
+plugin.summarizeCoverage = function (opts) {
+  if (!opts) opts = {};
+  if (!opts.coverageVariable) opts.coverageVariable = COVERAGE_VARIABLE;
+
+  if (!global[opts.coverageVariable]) throw new Error('no coverage data found, run tests then call #summarizeCoverage then call #writeReports');
+
+  var collector = new Collector();
+  collector.add(global[opts.coverageVariable]);
+  return istanbul.utils.summarizeCoverage(collector.getFinalCoverage());
+};
+
 plugin.writeReports = function (opts) {
-  if (arguments.length === 1 && typeof(arguments[0]) === 'string' ) {
-    opts = { dir: opts };
-  } else if (!opts) {
-    opts = {};
-  }
-  if (!opts.dir) {
-    opts.dir = path.join(process.cwd(), "coverage"); 
-  }
+  if (typeof opts === 'string') opts = { dir: opts };
+  if (!opts) opts = {};
+  if (!opts.coverageVariable) opts.coverageVariable = COVERAGE_VARIABLE;
+  if (!opts.dir) opts.dir = path.join(process.cwd(), "coverage");
   if (!opts.reporters) { 
     opts.reporters = [ "lcov", "json", "text", "text-summary" ]; 
   }
@@ -69,8 +80,10 @@ plugin.writeReports = function (opts) {
 
   cover.on('end', function() {
     var collector = new Collector();
-    collector.add(global.__coverage__);
+    collector.add(global[opts.coverageVariable]);
     opts.reporters.forEach(function (report) { report.writeReport(collector, true); });
+    delete global[opts.coverageVariable];
+
   }).resume();
 
   return cover;
